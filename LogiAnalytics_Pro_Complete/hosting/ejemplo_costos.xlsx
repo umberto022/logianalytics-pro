@@ -1,0 +1,17 @@
+import pandas as pd
+
+# Crear datos de ejemplo para costos
+data_costos = {
+    'Fecha': pd.date_range('2024-01-01', periods=30, freq='D'),
+    'Costo_Combustible': np.random.normal(500, 50, 30),
+    'Costo_Mano_Obra': np.random.normal(800, 100, 30),
+    'Costo_Mantenimiento': np.random.normal(200, 30, 30),
+    'Costo_Peaje': np.random.normal(150, 20, 30),
+    'Costo_Seguro': np.random.normal(100, 10, 30),
+    'Ruta': [f'Ruta_{i%5+1}' for i in range(30)],
+    'Vehiculo': [f'Vehículo_{i%3+1}' for i in range(30)]
+}
+
+df_costos = pd.DataFrame(data_costos)
+df_costos.to_excel('ejemplo_costos.xlsx', index=False)
+print("Archivo de ejemplo de costos creado: ejemplo_costos.xlsx")
