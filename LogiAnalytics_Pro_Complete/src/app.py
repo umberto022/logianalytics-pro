@@ -160,7 +160,7 @@ def show_company_setup():
 # ──────────────────────────────────────────────────────────────
 
 def show_app():
-    from pages import dashboard, inventory, reports, optimization, settings
+    from pages import dashboard, inventory, settings
     from pages import sales, profitability
 
     user = st.session_state.user
@@ -183,8 +183,6 @@ def show_app():
                 "💰 Ventas",
                 "📈 Rentabilidad",
                 "📦 Inventario",
-                "📋 Reportes",
-                "🚛 Optimización",
                 "⚙️ Configuración",
             ],
         )
@@ -205,10 +203,6 @@ def show_app():
         profitability.show()
     elif page == "📦 Inventario":
         inventory.show()
-    elif page == "📋 Reportes":
-        reports.show()
-    elif page == "🚛 Optimización":
-        optimization.show()
     elif page == "⚙️ Configuración":
         settings.show()
 
