@@ -1,252 +1,231 @@
+from __future__ import annotations
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
-import random
+from database import Database
 
-def show():
-    st.title("📊 Dashboard Principal")
+_CSS = """
+<style>
+.kpi-card {
+    background: linear-gradient(135deg,#667eea,#764ba2);
+    border-radius:12px; padding:1rem 1.2rem; color:#fff;
+    margin-bottom:.5rem;
+}
+.kpi-card .kpi-label { font-size:.8rem; opacity:.85; margin-bottom:.2rem; }
+.kpi-card .kpi-value { font-size:1.8rem; font-weight:700; line-height:1.1; }
+.kpi-card .kpi-delta { font-size:.78rem; opacity:.8; margin-top:.25rem; }
+.alert-crit {
+    background:linear-gradient(90deg,#7f1d1d,#991b1b);
+    border-left:4px solid #ef4444; border-radius:8px;
+    padding:.55rem 1rem; margin-bottom:.3rem;
+    color:#fecaca; font-size:.85rem;
+}
+.alert-warn {
+    background:linear-gradient(90deg,#78350f,#92400e);
+    border-left:4px solid #f59e0b; border-radius:8px;
+    padding:.55rem 1rem; margin-bottom:.3rem;
+    color:#fde68a; font-size:.85rem;
+}
+.alert-ok {
+    background:linear-gradient(90deg,#064e3b,#065f46);
+    border-left:4px solid #10b981; border-radius:8px;
+    padding:.55rem 1rem; margin-bottom:.3rem;
+    color:#a7f3d0; font-size:.85rem;
+}
+</style>
+"""
+
+
+def _db() -> Database:
+    return Database()
+
+
+def show() -> None:
+    st.markdown(_CSS, unsafe_allow_html=True)
+    st.title("📊 Dashboard")
+
+    user = st.session_state.get("user")
+    if not user:
+        st.warning("Inicia sesión para continuar.")
+        return
+
+    uid = int(user["id"])
+    db  = _db()
+
+    col_period, _ = st.columns([1, 3])
+    with col_period:
+        days = st.selectbox(
+            "Período",
+            [7, 15, 30, 60, 90],
+            index=2,
+            format_func=lambda x: f"Últimos {x} días",
+        )
+
+    summary  = db.get_sales_summary(uid, days=days)
+    items    = db.list_inventory(uid)
+    routes   = db.get_profitability_by_route(uid, days=days)
+    products = db.get_profitability_by_product(uid, days=days)
+
+    if summary["num_sales"] == 0 and not items:
+        _empty_state()
+        return
+
+    # ── KPIs ──────────────────────────────────────────────────────────
+    margin_pct = (
+        summary["profit"] / summary["revenue"] * 100
+        if summary["revenue"] > 0 else 0
+    )
+    inv_value  = sum(int(i["current_stock"]) * float(i["unit_cost"]) for i in items)
+    n_crit     = sum(1 for i in items if int(i["current_stock"]) <= int(i["min_stock"]))
+    n_low      = sum(
+        1 for i in items
+        if int(i["current_stock"]) > int(i["min_stock"])
+        and int(i["max_stock"]) > int(i["min_stock"])
+        and int(i["current_stock"]) <= int(i["min_stock"]) + max(1, int((int(i["max_stock"]) - int(i["min_stock"])) * 0.25))
+    )
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Ingresos",         f"${summary['revenue']:,.2f}")
+    c2.metric("Ganancia",         f"${summary['profit']:,.2f}",  f"{margin_pct:.1f}%")
+    c3.metric("Ventas",           f"{summary['num_sales']:,}")
+    c4.metric("Valor inventario", f"${inv_value:,.2f}")
+    c5.metric("Alertas stock",    f"{n_crit} crít  {n_low} bajos",
+              delta_color="inverse" if n_crit + n_low > 0 else "normal")
+
     st.markdown("---")
-    
-    # Generar datos de ejemplo
-    data = generate_dashboard_data()
-    
-    # Métricas principales
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric(
-            label="Envíos Hoy",
-            value=f"{data['envios_hoy']:,}",
-            delta=f"{data['envios_delta']:+.1f}%"
+
+    # ── Stock alerts ──────────────────────────────────────────────────
+    alerts = _build_alerts(items)
+    if alerts:
+        with st.expander(f"⚠️ {len(alerts)} alerta(s) de inventario", expanded=n_crit > 0):
+            for cls, text in alerts:
+                st.markdown(f'<div class="{cls}">{text}</div>', unsafe_allow_html=True)
+
+    # ── Trend chart ───────────────────────────────────────────────────
+    sales_rows = db.get_sales(uid, days=days)
+    if sales_rows:
+        df_sales = pd.DataFrame(sales_rows)
+        df_sales["sale_date"] = pd.to_datetime(df_sales["sale_date"])
+        daily = (
+            df_sales.groupby(df_sales["sale_date"].dt.date)
+            .agg(Ingresos=("total_revenue", "sum"), Ganancia=("profit", "sum"))
+            .reset_index()
+            .rename(columns={"sale_date": "Fecha"})
         )
-    
-    with col2:
-        st.metric(
-            label="Costo Promedio",
-            value=f"${data['costo_promedio']:.2f}",
-            delta=f"{data['costo_delta']:+.1f}%"
+        fig_trend = px.line(
+            daily, x="Fecha", y=["Ingresos", "Ganancia"],
+            title=f"Ingresos y ganancia — últimos {days} días",
+            labels={"value": "$", "variable": "Métrica"},
+            color_discrete_map={"Ingresos": "#667eea", "Ganancia": "#48bb78"},
         )
-    
-    with col3:
-        st.metric(
-            label="Tiempo Promedio",
-            value=f"{data['tiempo_promedio']:.1f} días",
-            delta=f"{data['tiempo_delta']:+.1f}%"
-        )
-    
-    with col4:
-        st.metric(
-            label="Satisfacción",
-            value=f"{data['satisfaccion']:.1f}%",
-            delta=f"{data['satisfaccion_delta']:+.1f}%"
-        )
-    
-    st.markdown("---")
-    
-    # Gráficos principales
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("📈 Tendencias de Envíos")
-        fig_envios = px.line(
-            data['tendencias'], 
-            x='fecha', 
-            y='envios',
-            title="Envíos por Día (Últimos 30 días)",
-            color_discrete_sequence=['#667eea']
-        )
-        fig_envios.update_layout(
-            xaxis_title="Fecha",
-            yaxis_title="Número de Envíos",
-            height=400
-        )
-        st.plotly_chart(fig_envios, use_container_width=True)
-    
-    with col2:
-        st.subheader("💰 Análisis de Costos")
-        fig_costos = px.bar(
-            data['costos_por_ruta'],
-            x='ruta',
-            y='costo_promedio',
-            title="Costo Promedio por Ruta",
-            color='costo_promedio',
-            color_continuous_scale='Viridis'
-        )
-        fig_costos.update_layout(
-            xaxis_title="Ruta",
-            yaxis_title="Costo Promedio ($)",
-            height=400
-        )
-        st.plotly_chart(fig_costos, use_container_width=True)
-    
-    # Análisis geográfico
-    st.subheader("🗺️ Análisis Geográfico")
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        # Mapa de calor de entregas
-        fig_mapa = px.scatter_mapbox(
-            data['entregas_geograficas'],
-            lat="lat",
-            lon="lon",
-            size="cantidad",
-            color="costo_promedio",
-            hover_name="ciudad",
-            hover_data=["envios", "costo_promedio"],
-            color_continuous_scale="Viridis",
-            size_max=50,
-            zoom=3,
-            title="Distribución de Entregas por Región"
-        )
-        fig_mapa.update_layout(
-            mapbox_style="open-street-map",
-            height=500
-        )
-        st.plotly_chart(fig_mapa, use_container_width=True)
-    
-    with col2:
-        st.subheader("🏆 Top Ciudades")
-        for i, ciudad in enumerate(data['top_ciudades'], 1):
-            st.write(f"{i}. **{ciudad['nombre']}**")
-            st.write(f"   Envíos: {ciudad['envios']:,}")
-            st.write(f"   Costo: ${ciudad['costo']:.2f}")
-            st.write("---")
-    
-    # Análisis de eficiencia
-    st.subheader("⚡ Análisis de Eficiencia")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Eficiencia por día de la semana
-        fig_eficiencia = px.bar(
-            data['eficiencia_semanal'],
-            x='dia',
-            y='eficiencia',
-            title="Eficiencia por Día de la Semana",
-            color='eficiencia',
-            color_continuous_scale='RdYlGn'
-        )
-        fig_eficiencia.update_layout(
-            xaxis_title="Día de la Semana",
-            yaxis_title="Eficiencia (%)",
-            height=400
-        )
-        st.plotly_chart(fig_eficiencia, use_container_width=True)
-    
-    with col2:
-        # Distribución de tiempos de entrega
-        fig_tiempos = px.histogram(
-            data['tiempos_entrega'],
-            x='tiempo_entrega',
-            nbins=20,
-            title="Distribución de Tiempos de Entrega",
-            color_discrete_sequence=['#764ba2']
-        )
-        fig_tiempos.update_layout(
-            xaxis_title="Tiempo de Entrega (días)",
-            yaxis_title="Frecuencia",
-            height=400
-        )
-        st.plotly_chart(fig_tiempos, use_container_width=True)
-    
-    # Alertas y notificaciones
-    st.subheader("🔔 Alertas y Notificaciones")
-    
-    alertas = data['alertas']
-    
-    for alerta in alertas:
-        if alerta['tipo'] == 'error':
-            st.error(f"⚠️ {alerta['mensaje']}")
-        elif alerta['tipo'] == 'warning':
-            st.warning(f"⚠️ {alerta['mensaje']}")
+        fig_trend.update_layout(legend_title_text="")
+        st.plotly_chart(fig_trend, use_container_width=True)
+
+    # ── Route + Products row ───────────────────────────────────────────
+    col_r, col_p = st.columns(2)
+
+    with col_r:
+        if routes:
+            df_r = pd.DataFrame(routes).fillna(0).sort_values("profit", ascending=False)
+            fig_r = px.bar(
+                df_r, x="route", y="profit",
+                color="margin_pct", color_continuous_scale="RdYlGn",
+                title="Ganancia por ruta ($)",
+                labels={"route": "Ruta", "profit": "Ganancia ($)", "margin_pct": "Margen (%)"},
+                text_auto=".2s",
+            )
+            fig_r.update_layout(xaxis_tickangle=-30, coloraxis_showscale=False)
+            st.plotly_chart(fig_r, use_container_width=True)
         else:
-            st.info(f"ℹ️ {alerta['mensaje']}")
+            st.info("Sin datos de rutas para este período.")
 
-def generate_dashboard_data():
-    """Genera datos de ejemplo para el dashboard"""
-    np.random.seed(42)
-    
-    # Métricas principales
-    envios_hoy = random.randint(1200, 1500)
-    envios_delta = random.uniform(-5, 15)
-    costo_promedio = random.uniform(35, 55)
-    costo_delta = random.uniform(-10, 5)
-    tiempo_promedio = random.uniform(1.5, 3.5)
-    tiempo_delta = random.uniform(-20, 10)
-    satisfaccion = random.uniform(85, 98)
-    satisfaccion_delta = random.uniform(-2, 5)
-    
-    # Tendencias de envíos (últimos 30 días)
-    fechas = pd.date_range(start=datetime.now() - timedelta(days=30), end=datetime.now(), freq='D')
-    tendencias = pd.DataFrame({
-        'fecha': fechas,
-        'envios': np.random.randint(800, 1500, len(fechas))
-    })
-    
-    # Costos por ruta
-    rutas = ['Norte', 'Sur', 'Este', 'Oeste', 'Centro', 'Noroeste', 'Noreste', 'Suroeste', 'Sureste']
-    costos_por_ruta = pd.DataFrame({
-        'ruta': rutas,
-        'costo_promedio': np.random.uniform(25, 65, len(rutas))
-    })
-    
-    # Datos geográficos
-    ciudades = [
-        {'ciudad': 'Ciudad de México', 'lat': 19.4326, 'lon': -99.1332, 'envios': 450, 'costo_promedio': 42.50},
-        {'ciudad': 'Guadalajara', 'lat': 20.6597, 'lon': -103.3496, 'envios': 320, 'costo_promedio': 38.75},
-        {'ciudad': 'Monterrey', 'lat': 25.6866, 'lon': -100.3161, 'envios': 280, 'costo_promedio': 45.20},
-        {'ciudad': 'Puebla', 'lat': 19.0414, 'lon': -98.2063, 'envios': 180, 'costo_promedio': 35.80},
-        {'ciudad': 'Tijuana', 'lat': 32.5149, 'lon': -117.0382, 'envios': 150, 'costo_promedio': 52.30},
-        {'ciudad': 'León', 'lat': 21.1256, 'lon': -101.6860, 'envios': 120, 'costo_promedio': 41.90},
-        {'ciudad': 'Juárez', 'lat': 31.6904, 'lon': -106.4244, 'envios': 95, 'costo_promedio': 48.60},
-        {'ciudad': 'Torreón', 'lat': 25.5431, 'lon': -103.4180, 'envios': 85, 'costo_promedio': 44.15}
-    ]
-    
-    entregas_geograficas = pd.DataFrame(ciudades)
-    entregas_geograficas['cantidad'] = entregas_geograficas['envios']
-    
-    # Top ciudades
-    top_ciudades = sorted(ciudades, key=lambda x: x['envios'], reverse=True)[:5]
-    
-    # Eficiencia semanal
-    dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
-    eficiencia_semanal = pd.DataFrame({
-        'dia': dias,
-        'eficiencia': np.random.uniform(75, 95, len(dias))
-    })
-    
-    # Tiempos de entrega
-    tiempos_entrega = pd.DataFrame({
-        'tiempo_entrega': np.random.normal(2.5, 0.8, 1000)
-    })
-    
-    # Alertas
-    alertas = [
-        {'tipo': 'warning', 'mensaje': 'Ruta Norte: Costo aumentó 15% esta semana'},
-        {'tipo': 'info', 'mensaje': 'Nueva optimización disponible para ruta Sur'},
-        {'tipo': 'error', 'mensaje': 'Retraso crítico en entrega #12345 - Cliente VIP'},
-        {'tipo': 'info', 'mensaje': 'Meta mensual de envíos: 85% completada'}
-    ]
-    
-    return {
-        'envios_hoy': envios_hoy,
-        'envios_delta': envios_delta,
-        'costo_promedio': costo_promedio,
-        'costo_delta': costo_delta,
-        'tiempo_promedio': tiempo_promedio,
-        'tiempo_delta': tiempo_delta,
-        'satisfaccion': satisfaccion,
-        'satisfaccion_delta': satisfaccion_delta,
-        'tendencias': tendencias,
-        'costos_por_ruta': costos_por_ruta,
-        'entregas_geograficas': entregas_geograficas,
-        'top_ciudades': top_ciudades,
-        'eficiencia_semanal': eficiencia_semanal,
-        'tiempos_entrega': tiempos_entrega,
-        'alertas': alertas
-    }
+    with col_p:
+        if products:
+            df_p = pd.DataFrame(products).fillna(0).nlargest(5, "profit")
+            fig_p = px.bar(
+                df_p, x="product_name", y="profit",
+                color="margin_pct", color_continuous_scale="RdYlGn",
+                title="Top 5 productos por ganancia ($)",
+                labels={"product_name": "Producto", "profit": "Ganancia ($)", "margin_pct": "Margen (%)"},
+                text_auto=".2s",
+            )
+            fig_p.update_layout(xaxis_tickangle=-30, coloraxis_showscale=False)
+            st.plotly_chart(fig_p, use_container_width=True)
+        else:
+            st.info("Sin datos de productos para este período.")
+
+    # ── Category treemap + Inventory health ──────────────────────────
+    if products:
+        col_t, col_h = st.columns(2)
+        df_all = pd.DataFrame(products).fillna(0)
+
+        with col_t:
+            fig_tree = px.treemap(
+                df_all, path=["category", "product_name"], values="revenue",
+                color="margin_pct", color_continuous_scale="RdYlGn",
+                title="Ingresos por categoría (color = margen %)",
+                labels={"margin_pct": "Margen (%)", "revenue": "Ingreso ($)"},
+            )
+            st.plotly_chart(fig_tree, use_container_width=True)
+
+        with col_h:
+            if items:
+                df_inv = pd.DataFrame(items)
+                def _status(r):
+                    c, mn, mx = int(r["current_stock"]), int(r["min_stock"]), int(r["max_stock"])
+                    if c <= mn: return "🔴 Crítico"
+                    if mx > mn and c <= mn + max(1, int((mx - mn) * 0.25)): return "🟡 Bajo"
+                    return "🟢 Óptimo"
+                df_inv["estado"] = df_inv.apply(_status, axis=1)
+                counts = df_inv["estado"].value_counts().reset_index()
+                counts.columns = ["estado", "cantidad"]
+                fig_h = px.bar(
+                    counts, x="estado", y="cantidad",
+                    color="estado",
+                    color_discrete_map={"🔴 Crítico": "#ef4444", "🟡 Bajo": "#f59e0b", "🟢 Óptimo": "#10b981"},
+                    title="Estado del inventario",
+                    labels={"estado": "Estado", "cantidad": "Productos"},
+                    text_auto=True,
+                )
+                fig_h.update_layout(showlegend=False)
+                st.plotly_chart(fig_h, use_container_width=True)
+
+    # ── Recent sales table ─────────────────────────────────────────────
+    if sales_rows:
+        st.markdown("---")
+        st.subheader("Ventas recientes")
+        df_recent = pd.DataFrame(sales_rows[:10])
+        show_cols = [c for c in ["sale_date", "product_name", "quantity", "unit_price",
+                                  "route", "zone", "client", "total_revenue", "profit"]
+                     if c in df_recent.columns]
+        renamed = {
+            "sale_date": "Fecha", "product_name": "Producto", "quantity": "Cant.",
+            "unit_price": "Precio u.", "route": "Ruta", "zone": "Zona",
+            "client": "Cliente", "total_revenue": "Ingreso ($)", "profit": "Ganancia ($)",
+        }
+        st.dataframe(
+            df_recent[show_cols].rename(columns=renamed),
+            use_container_width=True, hide_index=True,
+        )
+
+
+def _build_alerts(items: list) -> list[tuple[str, str]]:
+    alerts = []
+    for i in items:
+        c, mn, mx = int(i["current_stock"]), int(i["min_stock"]), int(i["max_stock"])
+        name = i["name"]
+        if c <= mn:
+            alerts.append(("alert-crit", f"<b>🔴 Crítico</b> · {name} — stock {c} ≤ mín {mn}"))
+        elif mx > mn and c <= mn + max(1, int((mx - mn) * 0.25)):
+            alerts.append(("alert-warn", f"<b>🟡 Bajo</b> · {name} — stock {c} (mín {mn})"))
+    return alerts
+
+
+def _empty_state() -> None:
+    st.info(
+        "¡Bienvenido/a! Aún no tienes datos. Sigue estos pasos:\n\n"
+        "1. **📦 Inventario** → agrega tus productos\n"
+        "2. **💰 Ventas** → registra tus ventas\n"
+        "3. Vuelve aquí para ver tu dashboard con datos reales."
+    )

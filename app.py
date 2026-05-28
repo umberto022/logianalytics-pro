@@ -1,23 +1,13 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-from datetime import datetime, timedelta
-import json
-from views import dashboard, optimization, reports, settings
-from database import Database
-import re
 
-# Configuración de la página
 st.set_page_config(
     page_title="LogiAnalytics Pro",
     page_icon="🚚",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# PWA: inyectar manifest y meta tags para móvil
+# PWA meta tags
 st.markdown("""
 <link rel="manifest" href="/static/manifest.json">
 <meta name="theme-color" content="#667eea">
@@ -27,349 +17,214 @@ st.markdown("""
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 """, unsafe_allow_html=True)
 
-# CSS personalizado
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 3rem;
-        color: #1f77b4;
-        text-align: center;
-        margin-bottom: 2rem;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-    }
-    .metric-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 1rem;
-        border-radius: 10px;
-        color: white;
-        text-align: center;
-        margin: 0.5rem 0;
-    }
-    .sidebar .sidebar-content {
-        background: linear-gradient(180deg, #f8f9fa 0%, #e9ecef 100%);
-    }
-    .stButton > button {
-        background: linear-gradient(45deg, #667eea, #764ba2);
-        color: white;
-        border: none;
-        border-radius: 20px;
-        padding: 0.5rem 2rem;
-        font-weight: bold;
-    }
-</style>
-""", unsafe_allow_html=True)
+from database import Database
 
-# Inicializar base de datos
-@st.cache_resource
-def init_database():
+
+def _db() -> Database:
     return Database()
 
-# Funciones de validación
-def validate_email(email):
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
 
-def validate_password(password):
-    if len(password) < 8:
-        return False, "La contraseña debe tener al menos 8 caracteres"
-    if not re.search(r'[A-Z]', password):
-        return False, "La contraseña debe tener al menos una mayúscula"
-    if not re.search(r'[a-z]', password):
-        return False, "La contraseña debe tener al menos una minúscula"
-    if not re.search(r'\d', password):
-        return False, "La contraseña debe tener al menos un número"
-    return True, "Contraseña válida"
+# ──────────────────────────────────────────────────────────────
+# AUTH SCREENS
+# ──────────────────────────────────────────────────────────────
 
-def validate_username(username):
-    if len(username) < 3:
-        return False, "El nombre de usuario debe tener al menos 3 caracteres"
-    if not re.match(r'^[a-zA-Z0-9_]+$', username):
-        return False, "El nombre de usuario solo puede contener letras, números y guiones bajos"
-    return True, "Nombre de usuario válido"
+def show_login():
+    col_left, col_center, col_right = st.columns([1, 2, 1])
+    with col_center:
+        st.title("🚚 LogiAnalytics Pro")
+        st.markdown("Plataforma de analítica logística para tu empresa")
+        st.markdown("---")
+
+        tab_login, tab_register = st.tabs(["Iniciar sesión", "Crear cuenta"])
+
+        with tab_login:
+            with st.form("login_form"):
+                username = st.text_input("Usuario o email")
+                password = st.text_input("Contraseña", type="password")
+                submit = st.form_submit_button("Ingresar", type="primary", use_container_width=True)
+            if submit:
+                if not username or not password:
+                    st.error("Completa todos los campos")
+                else:
+                    db = _db()
+                    user = db.authenticate_user(username, password)
+                    if user:
+                        token = db.create_session(user["id"])
+                        st.session_state.user = user
+                        st.session_state.session_token = token
+                        st.session_state.logged_in = True
+                        st.rerun()
+                    else:
+                        st.error("Usuario o contraseña incorrectos")
+
+            st.markdown("---")
+            st.caption("**Demo:** usuario `admin` · contraseña `Admin123!`")
+
+        with tab_register:
+            with st.form("register_form"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    r_user  = st.text_input("Nombre de usuario *")
+                    r_email = st.text_input("Email *")
+                    r_name  = st.text_input("Nombre completo *")
+                with c2:
+                    r_phone = st.text_input("Teléfono")
+                    r_pass  = st.text_input("Contraseña *", type="password")
+                    r_conf  = st.text_input("Confirmar contraseña *", type="password")
+                submit_reg = st.form_submit_button("Crear cuenta", type="primary", use_container_width=True)
+            if submit_reg:
+                if not all([r_user, r_email, r_name, r_pass, r_conf]):
+                    st.error("Completa todos los campos obligatorios (*)")
+                elif r_pass != r_conf:
+                    st.error("Las contraseñas no coinciden")
+                elif len(r_pass) < 6:
+                    st.error("La contraseña debe tener al menos 6 caracteres")
+                else:
+                    db = _db()
+                    ok, msg = db.register_user(r_user, r_email, r_name, r_pass, r_phone)
+                    if ok:
+                        user = db.authenticate_user(r_user, r_pass)
+                        token = db.create_session(user["id"])
+                        st.session_state.user = user
+                        st.session_state.session_token = token
+                        st.session_state.logged_in = True
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+
+
+# ──────────────────────────────────────────────────────────────
+# COMPANY SETUP SCREEN
+# ──────────────────────────────────────────────────────────────
+
+def show_company_setup():
+    user = st.session_state.user
+    col_left, col_center, col_right = st.columns([1, 2, 1])
+    with col_center:
+        st.title("🏢 Registra tu empresa")
+        st.markdown(
+            f"Bienvenido/a **{user.get('full_name') or user['username']}**. "
+            "Antes de continuar, registra los datos de tu empresa."
+        )
+        st.markdown("---")
+
+        with st.form("company_form"):
+            c1, c2 = st.columns(2)
+            with c1:
+                c_name     = st.text_input("Nombre de la empresa *")
+                c_rif      = st.text_input("RIF / NIT / RFC")
+                c_industry = st.selectbox("Industria", [
+                    "Logística / Transporte", "Comercio / Retail", "Manufactura",
+                    "Distribución", "Alimentos y Bebidas", "Tecnología", "Otro",
+                ])
+                c_country  = st.selectbox("País", [
+                    "Venezuela", "Colombia", "México", "Argentina", "Chile",
+                    "Perú", "Ecuador", "Uruguay", "Otro",
+                ])
+            with c2:
+                c_address = st.text_area("Dirección", height=90)
+                c_phone   = st.text_input("Teléfono")
+                c_email   = st.text_input("Email empresarial")
+
+            col_a, col_b = st.columns(2)
+            with col_a:
+                submit = st.form_submit_button(
+                    "Registrar empresa y continuar", type="primary", use_container_width=True
+                )
+            with col_b:
+                skip = st.form_submit_button("Omitir por ahora", use_container_width=True)
+
+        if submit:
+            if not c_name:
+                st.error("El nombre de la empresa es obligatorio")
+            else:
+                db = _db()
+                ok, company_id = db.register_company(
+                    owner_id=user["id"], name=c_name, rif=c_rif,
+                    address=c_address, phone=c_phone, email=c_email,
+                    industry=c_industry, country=c_country,
+                )
+                if ok:
+                    fresh = db.get_user_by_id(user["id"])
+                    st.session_state.user = fresh
+                    st.success(f"Empresa '{c_name}' registrada exitosamente")
+                    st.rerun()
+                else:
+                    st.error("Error al registrar la empresa")
+        if skip:
+            st.session_state.skip_company = True
+            st.rerun()
+
+
+# ──────────────────────────────────────────────────────────────
+# MAIN APP
+# ──────────────────────────────────────────────────────────────
+
+def show_app():
+    from views import dashboard, inventory, settings, sales, profitability
+
+    user = st.session_state.user
+    db = _db()
+
+    with st.sidebar:
+        st.markdown(f"### 👤 {user.get('full_name') or user['username']}")
+        if user.get("company_name"):
+            st.markdown(f"🏢 **{user['company_name']}**")
+        st.markdown("---")
+
+        page = st.radio(
+            "Navegación",
+            [
+                "📊 Dashboard",
+                "💰 Ventas",
+                "📈 Rentabilidad",
+                "📦 Inventario",
+                "⚙️ Configuración",
+            ],
+        )
+
+        st.markdown("---")
+        if st.button("Cerrar sesión", use_container_width=True):
+            token = st.session_state.get("session_token")
+            if token:
+                db.delete_session(token)
+            st.session_state.clear()
+            st.rerun()
+
+    if page == "📊 Dashboard":
+        dashboard.show()
+    elif page == "💰 Ventas":
+        sales.show()
+    elif page == "📈 Rentabilidad":
+        profitability.show()
+    elif page == "📦 Inventario":
+        inventory.show()
+    elif page == "⚙️ Configuración":
+        settings.show()
+
+
+# ──────────────────────────────────────────────────────────────
+# ENTRY POINT
+# ──────────────────────────────────────────────────────────────
 
 def main():
-    # Header principal
-    st.markdown('<h1 class="main-header">🚚 LogiAnalytics Pro</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align: center; font-size: 1.2rem; color: #666;">Plataforma de Análisis Logístico Inteligente</p>', unsafe_allow_html=True)
-    
-    # Inicializar base de datos
-    db = init_database()
-    
-    # Inicializar estado de sesión
-    if 'user' not in st.session_state:
-        st.session_state.user = None
-    if 'session_token' not in st.session_state:
-        st.session_state.session_token = None
-    if 'show_register' not in st.session_state:
-        st.session_state.show_register = False
-    
-    # Sidebar para autenticación
-    with st.sidebar:
-        st.image("https://via.placeholder.com/200x100/667eea/ffffff?text=LogiAnalytics", width=200)
-        
-        if st.session_state.user is None:
-            # Mostrar formulario de login o registro
-            if st.session_state.show_register:
-                show_register_form(db)
-            else:
-                show_login_form(db)
-        else:
-            # Usuario autenticado
-            st.success(f'Bienvenido {st.session_state.user["full_name"]}')
-            
-            # Navegación principal
-            st.markdown("---")
-            st.markdown("### 📊 Navegación")
-            
-            page = st.selectbox(
-                "Selecciona una sección:",
-                ["Dashboard", "Optimización", "Reportes", "Configuración", "Gestión de Usuarios"]
-            )
-            
-            # Información del usuario
-            st.markdown("---")
-            st.markdown("### 👤 Usuario")
-            st.write(f"**Nombre:** {st.session_state.user['full_name']}")
-            st.write(f"**Usuario:** {st.session_state.user['username']}")
-            st.write(f"**Rol:** {st.session_state.user['role'].title()}")
-            st.write(f"**Plan:** {st.session_state.user['subscription_plan'].title()}")
-            
-            if st.button('🚪 Cerrar Sesión', type="secondary"):
-                # Cerrar sesión
-                if st.session_state.session_token:
-                    db.logout_session(st.session_state.session_token)
-                st.session_state.user = None
-                st.session_state.session_token = None
-                st.rerun()
-    
-    # Contenido principal basado en la página seleccionada
-    if st.session_state.user is not None:
-        if page == "Dashboard":
-            dashboard.show()
-        elif page == "Optimización":
-            optimization.show()
-        elif page == "Reportes":
-            reports.show()
-        elif page == "Configuración":
-            settings.show()
-        elif page == "Gestión de Usuarios":
-            from views import user_management
-            user_management.show()
-    else:
-        # Página de bienvenida para usuarios no autenticados
-        show_welcome_page()
+    if not st.session_state.get("logged_in"):
+        show_login()
+        return
 
-def show_login_form(db):
-    """Muestra el formulario de login"""
-    st.markdown("### 🔐 Iniciar Sesión")
-    
-    with st.form("login_form"):
-        username = st.text_input("Usuario", placeholder="Ingresa tu nombre de usuario")
-        password = st.text_input("Contraseña", type="password", placeholder="Ingresa tu contraseña")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            login_clicked = st.form_submit_button("🚀 Iniciar Sesión", type="primary")
-        
-        with col2:
-            register_clicked = st.form_submit_button("📝 Registrarse")
-        
-        if login_clicked:
-            if username and password:
-                user = db.authenticate_user(username, password)
-                if user:
-                    # Crear sesión
-                    session_token = db.create_session(user['id'])
-                    st.session_state.user = user
-                    st.session_state.session_token = session_token
-                    st.success("¡Inicio de sesión exitoso!")
-                    st.rerun()
-                else:
-                    st.error("Usuario o contraseña incorrectos")
-            else:
-                st.warning("Por favor completa todos los campos")
-        
-        if register_clicked:
-            st.session_state.show_register = True
-            st.rerun()
+    db = _db()
+    fresh = db.get_user_by_id(st.session_state.user["id"])
+    if fresh:
+        st.session_state.user = fresh
 
-def show_register_form(db):
-    """Muestra el formulario de registro"""
-    st.markdown("### 📝 Registro de Usuario")
-    
-    with st.form("register_form"):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            username = st.text_input("Usuario", placeholder="Nombre de usuario")
-            email = st.text_input("Email", placeholder="tu@email.com")
-            full_name = st.text_input("Nombre Completo", placeholder="Tu nombre completo")
-        
-        with col2:
-            company_name = st.text_input("Empresa", placeholder="Nombre de tu empresa")
-            phone = st.text_input("Teléfono", placeholder="+52 55 1234 5678")
-            subscription_plan = st.selectbox("Plan", ["basic", "pro", "enterprise"])
-        
-        password = st.text_input("Contraseña", type="password", placeholder="Mínimo 8 caracteres")
-        confirm_password = st.text_input("Confirmar Contraseña", type="password", placeholder="Repite tu contraseña")
-        
-        # Términos y condiciones
-        terms_accepted = st.checkbox("Acepto los términos y condiciones", value=False)
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            register_clicked = st.form_submit_button("✅ Registrarse", type="primary")
-        
-        with col2:
-            back_clicked = st.form_submit_button("⬅️ Volver al Login")
-        
-        if register_clicked:
-            # Validaciones
-            errors = []
-            
-            # Validar username
-            if not username:
-                errors.append("El nombre de usuario es requerido")
-            else:
-                valid, msg = validate_username(username)
-                if not valid:
-                    errors.append(msg)
-                elif db.get_user_by_username(username):
-                    errors.append("El nombre de usuario ya existe")
-            
-            # Validar email
-            if not email:
-                errors.append("El email es requerido")
-            elif not validate_email(email):
-                errors.append("El email no es válido")
-            elif db.get_user_by_email(email):
-                errors.append("El email ya está registrado")
-            
-            # Validar contraseña
-            if not password:
-                errors.append("La contraseña es requerida")
-            else:
-                valid, msg = validate_password(password)
-                if not valid:
-                    errors.append(msg)
-            
-            # Validar confirmación de contraseña
-            if password != confirm_password:
-                errors.append("Las contraseñas no coinciden")
-            
-            # Validar términos
-            if not terms_accepted:
-                errors.append("Debes aceptar los términos y condiciones")
-            
-            # Validar nombre completo
-            if not full_name:
-                errors.append("El nombre completo es requerido")
-            
-            if errors:
-                for error in errors:
-                    st.error(error)
-            else:
-                # Crear usuario
-                success = db.create_user(
-                    username=username,
-                    email=email,
-                    full_name=full_name,
-                    password=password,
-                    company_name=company_name,
-                    phone=phone,
-                    subscription_plan=subscription_plan
-                )
-                
-                if success:
-                    st.success("¡Usuario registrado exitosamente! Ya puedes iniciar sesión.")
-                    st.session_state.show_register = False
-                    st.rerun()
-                else:
-                    st.error("Error al crear el usuario. Intenta de nuevo.")
-        
-        if back_clicked:
-            st.session_state.show_register = False
-            st.rerun()
+    user = st.session_state.user
+    if not user.get("company_id") and not st.session_state.get("skip_company"):
+        show_company_setup()
+        return
 
-def show_welcome_page():
-    st.markdown("""
-    ## 🎯 Bienvenido a LogiAnalytics Pro
-    
-    **La plataforma más avanzada para análisis logístico empresarial**
-    
-    ### ✨ Características Principales
-    
-    - **📊 Dashboard Inteligente**: Visualiza KPIs clave en tiempo real
-    - **🚛 Optimización de Rutas**: Algoritmos avanzados para reducir costos
-    - **📈 Análisis Predictivo**: Predice demanda y optimiza inventario
-    - **🔔 Alertas Automáticas**: Notificaciones inteligentes
-    - **📋 Reportes Personalizados**: Genera reportes automáticos
-    
-    ### 💼 Beneficios Empresariales
-    
-    - ⬇️ **Reducción de costos** hasta 25%
-    - ⚡ **Mejora de eficiencia** en 40%
-    - 📊 **Toma de decisiones** basada en datos
-    - 🎯 **Optimización continua** de procesos
-    
-    ### 🚀 Planes de Suscripción
-    
-    | Plan | Precio | Características |
-    |------|--------|----------------|
-    | **Básico** | $99/mes | Dashboard básico, 100 envíos/mes |
-    | **Pro** | $299/mes | Optimización avanzada, 1000 envíos/mes |
-    | **Enterprise** | $999/mes | Personalización completa, envíos ilimitados |
-    
-    ---
-    
-    **Inicia sesión o regístrate para acceder a la plataforma completa**
-    """)
-    
-    # Demo de datos
-    st.markdown("### 📊 Vista Previa de Datos")
-    
-    # Generar datos de ejemplo
-    demo_data = generate_demo_data()
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.metric("Envíos Hoy", "1,247", "12%")
-        st.metric("Costo Promedio", "$45.20", "-8%")
-    
-    with col2:
-        st.metric("Tiempo Promedio", "2.3 días", "-15%")
-        st.metric("Satisfacción", "94.2%", "3%")
-    
-    # Gráfico de ejemplo
-    fig = px.line(demo_data, x='fecha', y='envios', title='Envíos por Día')
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # Información adicional
-    st.markdown("### 🔐 Credenciales de Demo")
-    st.info("""
-    **Para probar la plataforma, puedes usar:**
-    - **Usuario:** admin
-    - **Contraseña:** admin123
-    
-    O regístrate con tu propia cuenta para una experiencia personalizada.
-    """)
+    show_app()
 
-def generate_demo_data():
-    """Genera datos de demostración"""
-    dates = pd.date_range(start='2024-01-01', end='2024-01-31', freq='D')
-    np.random.seed(42)
-    
-    data = {
-        'fecha': dates,
-        'envios': np.random.randint(800, 1500, len(dates)),
-        'costo': np.random.uniform(35, 55, len(dates)),
-        'tiempo': np.random.uniform(1.5, 3.5, len(dates))
-    }
-    
-    return pd.DataFrame(data)
 
 if __name__ == "__main__":
     main()
