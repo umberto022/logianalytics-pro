@@ -74,6 +74,7 @@ class Database:
             sku TEXT NOT NULL,
             name TEXT NOT NULL,
             category TEXT DEFAULT 'General',
+            color TEXT DEFAULT '',
             supplier TEXT DEFAULT '',
             current_stock INTEGER DEFAULT 0,
             min_stock INTEGER DEFAULT 0,
@@ -117,6 +118,13 @@ class Database:
             created_at TEXT DEFAULT (datetime('now'))
         );
         """)
+
+        # Migrate: add color column if it doesn't exist yet
+        try:
+            conn.execute("ALTER TABLE inventory ADD COLUMN color TEXT DEFAULT ''")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
         # Trigger: auto-decrease stock and log movement on every sale
         c.execute("""
@@ -319,7 +327,7 @@ class Database:
         c.execute("SELECT * FROM inventory WHERE user_id=? ORDER BY category, name", (user_id,))
         rows = c.fetchall()
         conn.close()
-        cols = ["id","user_id","company_id","sku","name","category","supplier",
+        cols = ["id","user_id","company_id","sku","name","category","color","supplier",
                 "current_stock","min_stock","max_stock","unit_cost","sale_price",
                 "daily_demand","lead_time_days","updated_at"]
         return [dict(zip(cols, r)) for r in rows]
@@ -328,15 +336,15 @@ class Database:
                            current_stock: int, min_stock: int, max_stock: int,
                            unit_cost: float, daily_demand=None, lead_time_days: int = 7,
                            supplier: str = "", sale_price: float = 0.0,
-                           company_id=None) -> tuple:
+                           company_id=None, color: str = "") -> tuple:
         try:
             conn = self._conn()
             c = conn.cursor()
             c.execute(
-                "INSERT INTO inventory (user_id,company_id,sku,name,category,supplier,"
+                "INSERT INTO inventory (user_id,company_id,sku,name,category,color,supplier,"
                 "current_stock,min_stock,max_stock,unit_cost,sale_price,daily_demand,lead_time_days) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (user_id, company_id, sku, name, category, supplier, current_stock,
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (user_id, company_id, sku, name, category, color, supplier, current_stock,
                  min_stock, max_stock, unit_cost, sale_price, daily_demand, lead_time_days),
             )
             inv_id = c.lastrowid
@@ -356,7 +364,7 @@ class Database:
                                category: str, current_stock: int, min_stock: int,
                                max_stock: int, unit_cost: float, daily_demand=None,
                                lead_time_days: int = 7, supplier: str = "",
-                               sale_price: float = 0.0) -> tuple:
+                               sale_price: float = 0.0, color: str = "") -> tuple:
         conn = self._conn()
         c = conn.cursor()
         c.execute("SELECT current_stock FROM inventory WHERE id=? AND user_id=?",
@@ -373,11 +381,11 @@ class Database:
                     (item_id, user_id, mov_type, diff),
                 )
         c.execute(
-            "UPDATE inventory SET sku=?,name=?,category=?,supplier=?,current_stock=?,"
+            "UPDATE inventory SET sku=?,name=?,category=?,color=?,supplier=?,current_stock=?,"
             "min_stock=?,max_stock=?,unit_cost=?,sale_price=?,daily_demand=?,"
             "lead_time_days=?,updated_at=datetime('now') "
             "WHERE id=? AND user_id=?",
-            (sku, name, category, supplier, current_stock, min_stock, max_stock,
+            (sku, name, category, color, supplier, current_stock, min_stock, max_stock,
              unit_cost, sale_price, daily_demand, lead_time_days, item_id, user_id),
         )
         ok = c.rowcount > 0

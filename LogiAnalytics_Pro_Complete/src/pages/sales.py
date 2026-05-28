@@ -46,7 +46,9 @@ def _register_sale(db: Database, uid: int, company_id) -> None:
         return
 
     options = {
-        f"{i['sku']} — {i['name']}  (stock: {i['current_stock']})": i
+        f"{i['name']}"
+        f"{' · ' + i['color'] if i.get('color') else ''}"
+        f"  [{i['category']}]  — stock: {i['current_stock']}": i
         for i in items
     }
 
