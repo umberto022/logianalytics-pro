@@ -5,7 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import json
-from pages import dashboard, optimization, reports, settings
+from views import dashboard, optimization, reports, settings
 from database import Database
 import re
 
@@ -16,6 +16,16 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# PWA: inyectar manifest y meta tags para móvil
+st.markdown("""
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#667eea">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LogiAnalytics">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+""", unsafe_allow_html=True)
 
 # CSS personalizado
 st.markdown("""
@@ -143,7 +153,7 @@ def main():
         elif page == "Configuración":
             settings.show()
         elif page == "Gestión de Usuarios":
-            from pages import user_management
+            from views import user_management
             user_management.show()
     else:
         # Página de bienvenida para usuarios no autenticados
