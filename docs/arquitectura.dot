@@ -1,0 +1,41 @@
+digraph arquitectura {
+  graph [bgcolor="#f8fafc", pad=0.30, nodesep=0.19, ranksep=0.32, dpi=144,
+         fontname="DejaVu Sans", fontcolor="#172554", fontsize=17,
+         label="LogiAnalytics Pro · Mapa de componentes", labelloc=t];
+  node [shape=box, style="rounded,filled", fontname="DejaVu Sans", fontsize=10,
+        color="#b8c5d8", fillcolor="#ffffff", fontcolor="#172554", margin="0.15,0.09"];
+  edge [color="#64748b", fontcolor="#475569", fontname="DejaVu Sans", fontsize=9, arrowsize=0.65];
+
+  browser [label="Navegador", fillcolor="#e2e8f0"];
+
+  subgraph cluster_streamlit {
+    label="Aplicación Streamlit"; labeljust=l; color="#a5b4fc"; style="rounded,filled"; fillcolor="#eef2ff";
+    app [label="app.py\nAcceso · sesión · empresa · navegación", fillcolor="#dbe4ff", color="#818cf8"];
+    subgraph cluster_views {
+      label="Vistas · views/"; labeljust=l; fontsize=12; color="#c7d2fe"; style=rounded;
+      { rank=same; dashboard; sales; profit; inventory; settings; }
+      dashboard [label="dashboard.py\nIndicadores y alertas"];
+      sales [label="sales.py\nRegistro e historial"];
+      profit [label="profitability.py\nMargen por ruta y producto"];
+      inventory [label="inventory.py\nStock y movimientos"];
+      settings [label="settings.py\nPerfil y empresa"];
+    }
+  }
+
+  access [label="database.py · Database\nAutenticación, consultas y operaciones de inventario y ventas",
+          fillcolor="#dbeafe", color="#60a5fa"];
+
+  subgraph cluster_sqlite {
+    label="Persistencia · logi_analytics.db"; labelloc=b; fontsize=13; color="#86efac"; style="rounded,filled"; fillcolor="#f0fdf4";
+    sqlite [shape=cylinder, label="SQLite", fillcolor="#dcfce7", color="#4ade80"];
+    tables [label="Usuarios y empresas\nusers · companies · sessions"];
+    operations [label="Operaciones\ninventory · sales · inventory_movements"];
+    { rank=same; tables; operations; }
+    sqlite -> { tables operations } [arrowhead=none];
+  }
+
+  browser -> app;
+  app -> { dashboard sales profit inventory settings };
+  { dashboard sales profit inventory settings } -> access;
+  access -> sqlite [label="lectura y escritura"];
+}
