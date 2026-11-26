@@ -1,259 +1,115 @@
-# 🚚 LogiAnalytics Pro
+# LogiAnalytics Pro
 
-**Plataforma SaaS de Análisis Logístico Inteligente**
+Aplicación web para gestionar inventario, registrar ventas y consultar la rentabilidad por producto y por ruta. Cada venta asociada a un producto actualiza sus existencias y deja un registro del movimiento.
 
-LogiAnalytics Pro es una solución completa de análisis de datos enfocada en optimización logística que permite a las empresas mejorar su eficiencia operativa, reducir costos y tomar decisiones basadas en datos.
+[Arquitectura](#arquitectura) · [Estructura del repositorio](#estructura-del-repositorio) · [Inicio rápido](#inicio-rápido) · [Verificación](#verificación)
 
-## ✨ Características Principales
+## Arquitectura
 
-### 📊 Dashboard Inteligente
-- **KPIs en tiempo real**: Monitoreo de envíos, costos, tiempos de entrega y satisfacción del cliente
-- **Visualizaciones interactivas**: Gráficos dinámicos con Plotly para análisis profundo
-- **Análisis geográfico**: Mapas de calor y distribución de entregas
-- **Alertas automáticas**: Notificaciones inteligentes de problemas críticos
+La aplicación se ejecuta en un proceso de **Streamlit**. `app.py` gestiona el inicio de sesión, la configuración inicial de empresa y la navegación. Las vistas consultan y actualizan los datos a través de la clase `Database`. **SQLite** guarda los datos en un archivo local y **pandas** y **Plotly** se usan para presentar tablas y gráficos en las vistas de análisis.
 
-### 🚛 Optimización Avanzada
-- **Algoritmos de rutas**: Optimización de rutas usando algoritmos de TSP y VRP
-- **Gestión de inventario**: Cálculo de EOQ, puntos de reorden y predicción de demanda
-- **Análisis de costos**: Desglose detallado y recomendaciones de ahorro
-- **Predicción de demanda**: Machine Learning para pronósticos precisos
+```mermaid
+flowchart TD
+    Browser["Usuario · Navegador"]
 
-### 📋 Reportes y Análisis
-- **Reportes ejecutivos**: Resúmenes de alto nivel para toma de decisiones
-- **Análisis detallado**: Deep dive en métricas operativas
-- **Exportación flexible**: CSV, Excel, JSON, PDF
-- **Alertas personalizables**: Sistema de notificaciones configurable
+    subgraph Streamlit["Aplicación Streamlit"]
+        App["app.py<br/>Acceso, configuración inicial y navegación"]
+        subgraph Views["Vistas · views/"]
+            Dashboard["Dashboard"]
+            Sales["Ventas"]
+            Profit["Rentabilidad"]
+            Inventory["Inventario"]
+            Settings["Configuración"]
+        end
+        App --> Dashboard & Sales & Profit & Inventory & Settings
+    end
 
-### 🔧 Configuración Empresarial
-- **Gestión de usuarios**: Roles y permisos granulares
-- **Integración API**: Conectores para sistemas ERP, WMS y GPS
-- **Configuración de seguridad**: 2FA, logs de auditoría, políticas de acceso
-- **Planes de suscripción**: Modelo SaaS escalable
+    Data["database.py<br/>Consultas y operaciones de negocio"]
+    SQLite[("SQLite<br/>logi_analytics.db")]
 
-## 🚀 Instalación y Configuración
-
-### Requisitos del Sistema
-- Python 3.8+
-- PostgreSQL 12+ (opcional, incluye base de datos simulada)
-- 4GB RAM mínimo
-- 10GB espacio en disco
-
-### Instalación Rápida
-
-1. **Clonar el repositorio**
-```bash
-git clone https://github.com/tu-usuario/logi-analytics-pro.git
-cd logi-analytics-pro
+    Browser <--> App
+    App --> Data
+    Dashboard & Sales & Profit & Inventory & Settings --> Data
+    Data <--> SQLite
 ```
 
-2. **Instalar dependencias**
-```bash
-pip install -r requirements.txt
+### Flujo de una venta
+
+```mermaid
+sequenceDiagram
+    actor U as Usuario
+    participant V as Ventas
+    participant D as Database
+    participant S as SQLite
+
+    U->>V: Selecciona producto, cantidad y precio
+    V->>D: Solicita registrar la venta
+    D->>S: Consulta el producto y el stock del usuario
+    alt Producto disponible y stock suficiente
+        D->>D: Calcula ingreso, costo y ganancia
+        D->>S: Inserta la venta
+        Note over S: Un trigger descuenta el stock<br/>y registra el movimiento de salida
+        D->>S: Confirma la transacción
+        D-->>V: Venta registrada
+        V-->>U: Muestra la confirmación
+    else Producto inexistente o stock insuficiente
+        D-->>V: Devuelve el motivo del rechazo
+        V-->>U: Muestra el mensaje
+    end
 ```
 
-3. **Configurar variables de entorno**
-```bash
-cp .env.example .env
-# Editar .env con tus configuraciones
+| Vista | Función |
+| --- | --- |
+| **Dashboard** | Resume ingresos, ganancias, ventas, valor de inventario y alertas de stock. |
+| **Ventas** | Registra ventas, muestra el historial y permite descargarlo en CSV. |
+| **Rentabilidad** | Compara ingresos, costos y márgenes por producto y ruta. |
+| **Inventario** | Gestiona productos, niveles de stock y movimientos. Permite importar y exportar CSV. |
+| **Configuración** | Permite gestionar los datos del perfil y de la empresa. |
+
+## Estructura del repositorio
+
+```text
+logianalytics-pro/
+├── app.py                          # Punto de entrada, acceso y navegación
+├── database.py                     # Esquema SQLite y operaciones de datos
+├── views/
+│   ├── dashboard.py                # Indicadores y alertas
+│   ├── sales.py                    # Registro e historial de ventas
+│   ├── profitability.py            # Rentabilidad por producto y ruta
+│   ├── inventory.py                # Productos, existencias y movimientos
+│   └── settings.py                 # Perfil y empresa
+├── .streamlit/config.toml          # Configuración y tema de Streamlit
+├── static/                         # Iconos y manifiesto web
+├── requirements.txt                # Dependencias de Python
+├── test_app.py                     # Script de comprobación de una versión anterior
+└── LogiAnalytics_Pro_Complete/      # Implementaciones y archivos de hosting anteriores
 ```
 
-4. **Ejecutar la aplicación**
-```bash
-# Aplicación web
-streamlit run app.py
+Para ejecutar o modificar la aplicación principal, usa [`app.py`](app.py), [`views/`](views/) y [`database.py`](database.py) en la raíz del repositorio. Allí está el flujo descrito en los diagramas.
 
-# API (en terminal separado)
-python api/main.py
-```
+## Inicio rápido
 
-### Configuración de Base de Datos
-
-Para usar una base de datos real (PostgreSQL):
+Los siguientes comandos usan un entorno virtual y funcionan en macOS y Linux. La instalación se verificó con **Python 3.12**.
 
 ```bash
-# Instalar PostgreSQL
-# Crear base de datos
-createdb logi_analytics
-
-# Configurar en .env
-DATABASE_URL=postgresql://usuario:password@localhost/logi_analytics
+git clone https://github.com/umberto022/logianalytics-pro.git
+cd logianalytics-pro
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m streamlit run app.py
 ```
 
-## 📖 Uso de la Aplicación
+En Windows PowerShell, activa el entorno con `.\.venv\Scripts\Activate.ps1`.
 
-### Acceso Inicial
-1. Abrir http://localhost:8501
-2. Usar credenciales de demo:
-   - **Usuario**: admin / **Contraseña**: admin123
-   - **Usuario**: demo / **Contraseña**: demo123
+Abre **http://localhost:8501** y usa la pestaña **Crear cuenta** para empezar. Puedes registrar una empresa durante la configuración inicial u omitir ese paso. La aplicación inicializa `logi_analytics.db` en la raíz al acceder por primera vez a la base de datos. Ese archivo guarda los datos entre ejecuciones y está excluido de Git.
 
-### Navegación Principal
+## Verificación
 
-#### 📊 Dashboard
-- **Métricas clave**: Envíos, costos, tiempos, satisfacción
-- **Tendencias**: Gráficos de evolución temporal
-- **Análisis geográfico**: Mapas de distribución
-- **Alertas**: Notificaciones en tiempo real
+1. Crea una cuenta e inicia sesión.
+2. En **Inventario**, agrega un producto con 10 unidades y un costo unitario de 4.
+3. En **Ventas**, registra 3 unidades de ese producto a un precio unitario de 9 y asigna una ruta.
+4. Comprueba que quedan 7 unidades en **Inventario** y que aparece el movimiento de salida.
+5. Consulta **Dashboard** y **Rentabilidad**. La venta debe sumar 27 de ingresos y 15 de ganancia en el período correspondiente.
 
-#### 🚛 Optimización
-- **Rutas**: Configurar parámetros y optimizar rutas
-- **Costos**: Análisis detallado de costos por categoría
-- **Inventario**: Gestión de stock y predicción de demanda
-- **Predicción**: Modelos de machine learning
-
-#### 📋 Reportes
-- **Ejecutivos**: Resúmenes para alta dirección
-- **Detallado**: Análisis profundo de operaciones
-- **Alertas**: Sistema de notificaciones
-- **Exportar**: Descarga en múltiples formatos
-
-#### ⚙️ Configuración
-- **Empresa**: Información y configuración regional
-- **Usuarios**: Gestión de roles y permisos
-- **Técnica**: Base de datos, APIs, integraciones
-- **Facturación**: Planes y pagos
-- **Seguridad**: Autenticación y auditoría
-
-## 🔌 API REST
-
-### Autenticación
-```bash
-# Login
-curl -X POST "http://localhost:8000/auth/login" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=admin&password=admin123"
-
-# Usar token en requests
-curl -H "Authorization: Bearer <token>" \
-  "http://localhost:8000/shipments"
-```
-
-### Endpoints Principales
-
-#### Envíos
-- `GET /shipments` - Lista de envíos
-- `POST /shipments` - Crear envío
-- `GET /shipments/{id}` - Obtener envío específico
-- `PUT /shipments/{id}` - Actualizar envío
-
-#### Análisis
-- `POST /analytics/dashboard` - Métricas del dashboard
-- `POST /analytics/reports` - Generar reportes
-- `GET /alerts` - Obtener alertas
-
-#### Optimización
-- `POST /optimization/routes` - Optimizar rutas
-- `POST /optimization/inventory` - Optimizar inventario
-
-#### Integración
-- `POST /integrations/webhook` - Webhook para sistemas externos
-
-### Documentación API
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-
-## 💰 Modelo de Monetización
-
-### Planes de Suscripción
-
-| Plan | Precio | Características |
-|------|--------|----------------|
-| **Básico** | $99/mes | Dashboard básico, 100 envíos/mes, 3 usuarios |
-| **Pro** | $299/mes | Optimización avanzada, 1,000 envíos/mes, 10 usuarios |
-| **Enterprise** | $999/mes | Personalización completa, envíos ilimitados, usuarios ilimitados |
-
-### Servicios Adicionales
-- **Consultoría**: $150/hora
-- **Integración personalizada**: $2,000 - $10,000
-- **Soporte prioritario**: $200/mes
-- **Reportes personalizados**: $500/reporte
-
-## 🏗️ Arquitectura Técnica
-
-### Frontend
-- **Streamlit**: Framework web para dashboards
-- **Plotly**: Visualizaciones interactivas
-- **Pandas**: Manipulación de datos
-- **NumPy**: Cálculos numéricos
-
-### Backend
-- **FastAPI**: API REST moderna y rápida
-- **Pydantic**: Validación de datos
-- **SQLAlchemy**: ORM para base de datos
-- **Uvicorn**: Servidor ASGI
-
-### Algoritmos
-- **Scikit-learn**: Machine Learning
-- **SciPy**: Optimización matemática
-- **Algoritmos personalizados**: TSP, VRP, EOQ
-
-### Integraciones
-- **Google Maps API**: Geocodificación y rutas
-- **Twilio**: Notificaciones SMS
-- **SendGrid**: Emails transaccionales
-- **Webhooks**: Integración con ERPs
-
-## 📈 Roadmap de Desarrollo
-
-### Versión 1.1 (Q2 2024)
-- [ ] Integración con GPS en tiempo real
-- [ ] App móvil para conductores
-- [ ] Machine Learning avanzado
-- [ ] Integración con marketplaces
-
-### Versión 1.2 (Q3 2024)
-- [ ] Análisis de sostenibilidad
-- [ ] Optimización de emisiones
-- [ ] Dashboard de ESG
-- [ ] Integración con IoT
-
-### Versión 2.0 (Q4 2024)
-- [ ] IA conversacional
-- [ ] Predicción de demanda avanzada
-- [ ] Optimización multi-objetivo
-- [ ] Marketplace de algoritmos
-
-## 🤝 Contribución
-
-### Cómo Contribuir
-1. Fork del repositorio
-2. Crear rama feature (`git checkout -b feature/nueva-funcionalidad`)
-3. Commit cambios (`git commit -am 'Agregar nueva funcionalidad'`)
-4. Push a la rama (`git push origin feature/nueva-funcionalidad`)
-5. Crear Pull Request
-
-### Estándares de Código
-- **Python**: PEP 8
-- **Documentación**: Docstrings en inglés
-- **Tests**: Cobertura mínima 80%
-- **Commits**: Mensajes descriptivos
-
-## 📞 Soporte
-
-### Canales de Soporte
-- **Email**: soporte@logianalytics.com
-- **Chat**: Disponible en la aplicación
-- **Documentación**: https://docs.logianalytics.com
-- **GitHub Issues**: Para reportar bugs
-
-### Niveles de Soporte
-- **Básico**: Email (48h respuesta)
-- **Pro**: Chat + Email (24h respuesta)
-- **Enterprise**: Teléfono + Chat + Email (4h respuesta)
-
-## 📄 Licencia
-
-Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para detalles.
-
-## 🙏 Agradecimientos
-
-- **Streamlit** por el framework de dashboards
-- **FastAPI** por la API REST moderna
-- **Plotly** por las visualizaciones interactivas
-- **Comunidad open source** por las librerías utilizadas
-
----
-
-**Desarrollado con ❤️ para optimizar la logística empresarial**
-
-*¿Preguntas? Contacta a nuestro equipo en contacto@logianalytics.com*
+El script [`test_app.py`](test_app.py) todavía espera la estructura y la interfaz de base de datos de una versión anterior. La comprobación anterior recorre el flujo de la aplicación actual.
