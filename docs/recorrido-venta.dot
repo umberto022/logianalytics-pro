@@ -1,0 +1,21 @@
+digraph venta {
+  graph [bgcolor="#f8fafc", pad=0.25, ranksep=0.32, nodesep=0.24, dpi=144,
+         fontname="DejaVu Sans", fontcolor="#172554", fontsize=18,
+         label="Una venta, dos resultados", labelloc=t];
+  node [shape=box, style="rounded,filled", fontname="DejaVu Sans", fontsize=12,
+        color="#a5b4fc", fillcolor="#eef2ff", fontcolor="#172554", margin="0.19,0.10"];
+  edge [color="#64748b", arrowsize=0.7];
+
+  start [label=<<B>Inventario inicial</B><BR/>10 unidades · costo de 4 cada una>];
+  sale [label=<<B>Registrar venta</B><BR/>3 unidades a 9 cada una>];
+  save [label=<<B>Guardar en SQLite</B><BR/>Se registra la venta y se descuenta el stock>,
+        color="#60a5fa", fillcolor="#dbeafe"];
+  stock [label=<<B>Inventario actualizado</B><BR/>10 − 3 = <B>7 unidades</B><BR/>Movimiento de salida: 3 unidades>,
+         color="#86efac", fillcolor="#dcfce7"];
+  profit [label=<<B>Dashboard y Rentabilidad</B><BR/>Ingreso: 3 × 9 = 27<BR/>Costo: 3 × 4 = 12<BR/>Ganancia: 27 − 12 = <B>15</B>>,
+          color="#86efac", fillcolor="#dcfce7"];
+
+  start -> sale -> save;
+  { rank=same; stock; profit; }
+  save -> { stock profit };
+}
